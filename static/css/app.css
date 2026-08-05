@@ -1,0 +1,111 @@
+[x-cloak] { display: none !important; }
+    .badge { display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; letter-spacing: -0.025em; }
+    .card { background: white; border-radius: 1rem; border: 1px solid rgb(226 232 240 / 0.8); box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+    .dark .card { background: rgb(15 23 42); border-color: rgb(30 41 59); }
+    .btn-ghost { padding: 0.375rem 0.625rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 500; background: rgb(241 245 249); transition: background-color .15s; }
+    .btn-ghost:hover { background: rgb(226 232 240); }
+    .dark .btn-ghost { background: rgb(30 41 59); }
+    .dark .btn-ghost:hover { background: rgb(51 65 85); }
+    .btn-primary { padding: 0.375rem 0.75rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 600; background: #2563eb; color: white; box-shadow: 0 1px 2px rgb(37 99 235 / 0.2); }
+    .btn-primary:hover { background: #1d4ed8; }
+    .input-sm { font-size: 0.875rem; border-radius: 0.5rem; border: 1px solid #cbd5e1; background: white; padding: 0.375rem 0.625rem; outline: none; }
+    .input-sm:focus { box-shadow: 0 0 0 2px rgb(59 130 246 / 0.4); border-color: #3b82f6; }
+    .dark .input-sm { border-color: #334155; background: #1e293b; }
+    .tab-active { border-color: #2563eb; color: #2563eb; }
+    .tab-idle { border-color: transparent; color: #64748b; }
+    .tab-idle:hover { color: #1e293b; }
+    .dark .tab-idle:hover { color: #e2e8f0; }
+    /* soft scrollbar */
+    .soft-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .soft-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    .dark .soft-scroll::-webkit-scrollbar-thumb { background: #475569; }
+    /* Gantt bar fills by type */
+    .gantt .bar-wrapper .bar { fill: #3b82f6; }
+    .gantt-2d-cad .bar { fill: #2563eb !important; }
+    .gantt-cad .bar { fill: #4f46e5 !important; }
+    .gantt-cam .bar { fill: #ea580c !important; }
+    .gantt-tools .bar { fill: #059669 !important; }
+    .gantt-others .bar { fill: #475569 !important; }
+    /* Critical path — red outline + stronger fill */
+    .gantt-critical .bar {
+      fill: #dc2626 !important;
+      stroke: #7f1d1d !important;
+      stroke-width: 2px;
+    }
+    .gantt-critical .bar-progress { fill: #991b1b !important; }
+
+    /* Title text ON the bar – high contrast */
+    .gantt .bar-label {
+      fill: #ffffff !important;
+      font-weight: 600 !important;
+      font-size: 12px !important;
+      paint-order: stroke fill;
+      stroke: rgba(0,0,0,0.45);
+      stroke-width: 2.5px;
+      stroke-linejoin: round;
+    }
+
+    /* Labels that appear outside / beside short bars */
+    .gantt .bar-wrapper .bar-label,
+    .gantt .bar-label.big {
+      fill: #ffffff !important;
+    }
+
+    /* Grid: row labels (task names on left of chart if any) & dates */
+    .gantt .grid-header,
+    .gantt .upper-text,
+    .gantt .lower-text {
+      fill: #1e293b !important;
+      font-weight: 600 !important;
+      font-size: 11px !important;
+    }
+    .gantt .tick,
+    .gantt .today-highlight {
+      stroke: #94a3b8;
+    }
+
+    /* Dark mode overrides for chart text */
+    .dark .gantt .upper-text,
+    .dark .gantt .lower-text,
+    .dark .gantt .grid-header {
+      fill: #e2e8f0 !important;
+    }
+    .dark .gantt .grid-row {
+      fill: #0f172a;
+    }
+    .dark .gantt .grid-row:nth-child(even) {
+      fill: #1e293b;
+    }
+    .dark .gantt .tick {
+      stroke: #475569;
+    }
+
+    /* Light mode row background contrast */
+    .gantt .grid-row {
+      fill: #f8fafc;
+    }
+    .gantt .grid-row:nth-child(even) {
+      fill: #f1f5f9;
+    }
+
+    .gantt-container { min-height: 400px; }
+    #gantt-target .gantt { font-size: 12px; }
+    #gantt-target .grid-header { height: 42px; }
+    #gantt-target svg { overflow: visible; }
+
+    /* Fallback: if label sits outside bar on light bg, dark text wins via filter not possible —
+       use dual readable style: dark text + white halo for ANY bar-label */
+    #gantt-target .bar-label {
+      fill: #0f172a !important;
+      stroke: #ffffff !important;
+      stroke-width: 3px !important;
+      paint-order: stroke fill;
+      font-weight: 700 !important;
+      font-size: 12px !important;
+    }
+    /* On top of colored bars, prefer white text with dark edge */
+    #gantt-target .bar-wrapper .bar-label {
+      fill: #ffffff !important;
+      stroke: rgba(15, 23, 42, 0.75) !important;
+      stroke-width: 2.5px !important;
+    }
