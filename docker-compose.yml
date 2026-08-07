@@ -1,0 +1,14 @@
+services:
+  plan365:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - plan365-data:/data
+    environment:
+      PLAN365_DB: /data/plan365.db
+      PLAN365_SECRET_KEY: ${PLAN365_SECRET_KEY:-change-me-in-production}
+    mem_limit: 256m
+    restart: unless-stopped
+volumes:
+  plan365-data:
