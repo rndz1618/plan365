@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plan365</title>
+  <link rel="stylesheet" href="/static/css/utilities.css" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/ui.css" />
+  <link rel="stylesheet" href="/static/css/frappe-gantt.css" />
+  <!-- Critical fallback if Tailwind CDN blocked -->
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body.app-body { background: #f6f7fb; color: #1c1f26; font-family: system-ui, sans-serif; }
+    [x-cloak] { display: none !important; }
+    .th-login-card {
+      background: #fff; border: 1px solid #e5eaf0; border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(15,23,42,.06); padding: 2rem; width: 100%; max-width: 400px;
+    }
+    .boot-fallback {
+      min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 1rem;
+    }
+  </style>
+  <!-- Tailwind optional: async so offline/SBC never blocks first paint -->
+  <script>
+  window.tailwind = window.tailwind || {};
+  tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } };
+</script>
+<script src="https://cdn.tailwindcss.com" defer></script>
+</head>
+<body class="h-full app-body font-sans antialiased" x-data="app()" x-init="init()">
+
+  <!-- ==================== LOGIN ==================== -->
+  <div x-show="!token" class="min-h-full flex items-center justify-center p-4">
+    <div class="th-login-card">
+      <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold tracking-tight">Plan365</h1>
+        <p class="text-slate-500 dark:text-slate-400 mt-1">Project & Task Manager</p>
+      </div>
+
+      <template x-if="authMode === 'login'">
+        <form @submit.prevent="login()" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">Username / Email</label>
+            <input x-model="loginForm.username" type="text" required
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Password</label>
+            <input x-model="loginForm.password" type="password" required
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <p x-show="authError" class="text-sm text-red-600" x-text="authError"></p>
+          <button type="submit" :disabled="authLoading"
+            class="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
+            <span x-show="!authLoading">Sign In</span>
+            <span x-show="authLoading">Loading...</span>
+          </button>
+          <p class="text-center text-sm text-slate-500">
+            Belum punya akun?
+            <button type="button" @click="authMode='register'" class="text-blue-600 hover:underline">Register</button>
+          </p>
+        </form>
+      </template>
+
+      <template x-if="authMode === 'register'">
+        <form @submit.prevent="register()" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">Full Name</label>
+            <input x-model="regForm.full_name" type="text"
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Username</label>
+            <input x-model="regForm.username" type="text" required
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Email</label>
+            <input x-model="regForm.email" type="email" required
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Password</label>
+            <input x-model="regForm.password" type="password" required minlength="6"
+              class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <p x-show="authError" class="text-sm text-red-600" x-text="authError"></p>
+          <button type="submit" :disabled="authLoading"
+            class="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
+            Register
+          </button>
+          <p class="text-center text-sm text-slate-500">
+            Sudah punya akun?
+            <button type="button" @click="authMode='login'" class="text-blue-600 hover:underline">Sign In</button>
+          </p>
+        </form>
+      </template>
+    </div>
+  </div>
+
+  <!-- ==================== APP SHELL (Taskhub-inspired) ==================== -->
+  <div x-show="token" class="h-full th-shell" :class="sidebarCollapsed && 'sidebar-collapsed'" x-cloak>
+    <!-- Sidebar -->
+    <aside class="th-sidebar">
+      <div class="th-logo">
+        <div class="th-logo-mark">P</div>
+        <span>Plan365</span>
+      </div>
+      <div class="th-workspace" x-text="(user?.full_name || user?.username || 'Workspace') + ' · ' + (user?.role || '')"></div>
+      <nav class="th-nav soft-scroll">
+        <button type="button" @click="view='dashboard'; currentProject=null; loadDashboard()"
+                class="th-nav-item" :class="view==='dashboard' ? 'active' : ''" title="Dashboard">
+          <span class="nav-ico">◈</span> <span>Dashboard</span>
+        </button>
+        <button type="button" @click="view='overview'; currentProject=null; loadTasks()"
+                class="th-nav-item" :class="view==='overview' && !currentProject ? 'active' : ''" title="My Tasks">
+          <span class="nav-ico">☰</span> <span>My Tasks</span>
+        </button>
+        <button type="button" @click="view='projects'; loadProjects()"
+                class="th-nav-item" :class="view==='projects' ? 'active' : ''" title="Projects">
+          <span class="nav-ico">▣</span> <span>Projects</span>
+        </button>
+        <button type="button" @click="view='workload'; loadWorkload()"
+                class="th-nav-item" :class="view==='workload' ? 'active' : ''" title="Team capacity">
+          <span class="nav-ico">▦</span> <span>Capacity</span>
+        </button>
+        <button type="button" @click="openAiView()"
+                class="th-nav-item" :class="view==='ai' ? 'active' : ''" title="AI Planning">
+          <span class="nav-ico">✦</span>
+          <span>AI Planning</span>
+        </button>
+        <button type="button" @click="view='settings'"
+                class="th-nav-item" :class="view==='settings' ? 'active' : ''" title="Settings">
+          <span class="nav-ico">⚙</span> <span>Settings</span>
+        </button>
+        <div class="th-nav-label flex items-center justify-between">
+          <span>Projects</span>
+          <button type="button" @click="openNewProject()" class="text-blue-600 text-sm leading-none" title="New project">+</button>
+        </div>
+        <div class="px-2 mb-1">
+          <select class="input-sm w-full text-xs" x-model="projectFilterStatus" @change="loadProjects()">
+            <option value="Active">Active only</option>
+            <option value="">All statuses</option>
+            <option value="On Hold">On Hold</option>
+            <option value="Completed">Completed</option>
+            <option value="Archived">Archived</option>
+          </select>
+        </div>
+        <template x-for="p in projects" :key="p.id">
+          <button type="button" @click="selectProject(p)"
+                  class="th-nav-item" :class="currentProject?.id===p.id ? 'active' : ''">
+            <span class="th-proj-dot" :style="'background:' + (p.color || '#3b82f6')"
+                  x-text="(p.name || '?')[0].toUpperCase()"></span>
+            <span class="truncate flex-1" x-text="p.name"></span>
+            <span class="text-[10px] text-slate-400" x-text="p.task_count||0"></span>
+          </button>
+        </template>
+      </nav>
+      <div class="p-3 border-t space-y-1" style="border-color: var(--th-border)">
+        <button type="button" @click="toggleSidebar()" class="th-nav-item" title="Collapse sidebar">
+          <span class="nav-ico" x-text="sidebarCollapsed ? '»' : '«'"></span>
+          <span x-text="sidebarCollapsed ? '' : 'Collapse'"></span>
+        </button>
+        <button type="button" @click="logout()" class="th-nav-item text-red-600" title="Logout">
+          <span class="nav-ico">⎋</span> <span>Logout</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="th-main">
+      <div class="th-topbar">
+        <button type="button" @click="toggleSidebar()" class="th-collapse-btn" title="Toggle sidebar"
+                x-text="sidebarCollapsed ? '»' : '«'"></button>
+        <div>
+          <div class="th-title" x-text="currentProject ? currentProject.name : 'My Tasks'"></div>
+          <div class="th-subtitle" x-text="currentProject ? (currentProject.description || 'Project tasks') : 'Monitor all of your tasks here'"></div>
+        </div>
+        <div class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-2"
+             :title="rtConnected ? 'Real-time connected' : 'Real-time offline'"
+             x-show="token">
+          <span class="w-1.5 h-1.5 rounded-full"
+                :class="rtConnected ? 'bg-emerald-500 rt-dot-live' : (rtStatus==='reconnect' ? 'bg-amber-400' : 'bg-slate-300')"></span>
+          <span class="text-slate-500 hidden sm:inline" x-text="rtConnected ? 'Live' : (rtStatus==='reconnect' ? 'Reconnecting' : 'Offline')"></span>
+        </div>
+        <div class="th-search">
+          <span class="text-slate-400 text-sm">⌕</span>
+          <input type="search" placeholder="Search anything" x-model="searchQuery" />
+        </div>
+        <button type="button" @click="toggleTheme()" class="th-icon-btn" title="Theme">◐</button>
+        <div class="th-avatar" x-text="(user?.full_name || user?.username || '?')[0].toUpperCase()"></div>
+      </div>
+
+      <div class="th-panel" x-show="view==='overview' || view==='project'">
+        <div class="th-toolbar">
+          <div class="th-seg">
+            <button type="button" @click="subView='list'" :class="subView==='list' && 'active'">Table</button>
+            <button type="button" @click="subView='kanban'; $nextTick(() => initKanban())" :class="subView==='kanban' && 'active'">Kanban</button>
+            <button type="button" @click="subView='calendar'" :class="subView==='calendar' && 'active'">Calendar</button>
+            <button type="button" @click="subView='gantt'; scheduleRenderGantt(0)" :class="subView==='gantt' && 'active'">Gantt</button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 ml-auto">
+            <div class="relative" x-data="{ open: false }">
+              <button type="button" @click="open=!open" class="input-sm flex items-center gap-1 min-w-[7rem]">
+                <span x-text="filterTypes.length ? ('Type ('+filterTypes.length+')') : 'Type: all'"></span>
+                <span class="text-slate-400">▾</span>
+              </button>
+              <div x-show="open" @click.outside="open=false" x-cloak
+                   class="absolute z-30 mt-1 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 max-h-52 overflow-y-auto">
+                <template x-for="t in types" :key="'ft-'+t">
+                  <label class="flex items-center gap-2 px-2 py-1 text-xs rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                    <input type="checkbox" class="rounded" :checked="filterTypes.includes(t)" @change="toggleFilter('filterTypes', t)" />
+                    <span x-text="t"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+            <div class="relative" x-data="{ open: false }">
+              <button type="button" @click="open=!open" class="input-sm flex items-center gap-1 min-w-[7rem]">
+                <span x-text="filterStatuses.length ? ('Status ('+filterStatuses.length+')') : 'Status: all'"></span>
+                <span class="text-slate-400">▾</span>
+              </button>
+              <div x-show="open" @click.outside="open=false" x-cloak
+                   class="absolute z-30 mt-1 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 max-h-52 overflow-y-auto">
+                <template x-for="s in statuses" :key="'fs-'+s">
+                  <label class="flex items-center gap-2 px-2 py-1 text-xs rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                    <input type="checkbox" class="rounded" :checked="filterStatuses.includes(s)" @change="toggleFilter('filterStatuses', s)" />
+                    <span x-text="s"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+            <div class="relative" x-data="{ open: false }">
+              <button type="button" @click="open=!open" class="input-sm flex items-center gap-1 min-w-[7rem]">
+                <span x-text="filterPriorities.length ? ('Priority ('+filterPriorities.length+')') : 'Priority: all'"></span>
+                <span class="text-slate-400">▾</span>
+              </button>
+              <div x-show="open" @click.outside="open=false" x-cloak
+                   class="absolute z-30 mt-1 w-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 max-h-52 overflow-y-auto">
+                <template x-for="p in priorities" :key="'fp-'+p">
+                  <label class="flex items-center gap-2 px-2 py-1 text-xs rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                    <input type="checkbox" class="rounded" :checked="filterPriorities.includes(p)" @change="toggleFilter('filterPriorities', p)" />
+                    <span x-text="p"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+            <button type="button" class="btn-ghost text-xs" x-show="filterTypes.length||filterStatuses.length||filterPriorities.length" @click="clearFilters()">Clear filters</button>
+            <button type="button" @click="exportCsv()" class="btn-ghost">Export</button>
+            <button type="button" @click="showNewTask=true; $nextTick(() => { $refs.newTaskTitle?.focus(); })" class="btn-primary" x-show="canEdit">+ New</button>
+          </div>
+        </div>
+
+          <!-- LIST VIEW (Taskhub table) -->
+          <div x-show="subView==='list'" class="th-table-wrap soft-scroll flex flex-col min-h-0 flex-1">
+            <table class="th-table">
+              <thead>
+                <tr>
+                  <th style="width:2.5rem"><input type="checkbox" class="rounded border-slate-300" disabled /></th>
+                  <th>Task Name</th>
+                  <th x-show="!currentProject">Project</th>
+                  <th>Type</th>
+                  <th>Assignee</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th style="width:5rem"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="task in filteredTasks" :key="task.id">
+                  <tr :class="editingId===task.id ? 'editing' : ''">
+                    <td><input type="checkbox" class="rounded border-slate-300" /></td>
+                    <td>
+                      <template x-if="editingId===task.id">
+                        <input x-model="editForm.title" @keydown.enter="saveEdit(task)" class="input-sm w-full min-w-[12rem]" />
+                      </template>
+                      <template x-if="editingId!==task.id">
+                        <div>
+                          <span class="th-task-name" @click="openDetail(task)" @dblclick="startEdit(task)" x-text="task.title"></span>
+                          <span x-show="task.is_milestone" class="badge ml-1 bg-violet-100 text-violet-700">◆ MS</span>
+                          <span x-show="isTaskBlocked(task)" class="badge ml-1 st-blocked">Blocked</span>
+                        </div>
+                      </template>
+                    </td>
+                    <td x-show="!currentProject">
+                      <div class="th-chip" x-show="task.project_name">
+                        <span class="th-chip-icon" :style="'background:' + (task.project_color || '#3b82f6')"
+                              x-text="(task.project_name || '?')[0].toUpperCase()"></span>
+                        <span x-text="task.project_name"></span>
+                      </div>
+                    </td>
+                    <td>
+                      <template x-if="editingId===task.id">
+                        <select x-model="editForm.type" class="input-sm">
+                          <template x-for="t in types" :key="t"><option :value="t" x-text="t"></option></template>
+                        </select>
+                      </template>
+                      <template x-if="editingId!==task.id">
+                        <span class="badge" :class="typeClass(task.type)" x-text="task.type"></span>
+                      </template>
+                    </td>
+                    <td>
+                      <div class="th-assignee" x-show="task.assignee_name || task.assignee_username">
+                        <span class="th-assignee-av"
+                              x-text="((task.assignee_name || task.assignee_username || '?')[0] || '?').toUpperCase()"></span>
+                        <span x-text="task.assignee_name || task.assignee_username"></span>
+                      </div>
+                      <span x-show="!(task.assignee_name || task.assignee_username)" class="text-slate-400 text-xs">—</span>
+                    </td>
+                    <td>
+                      <template x-if="editingId===task.id">
+                        <input type="date" x-model="editForm.due_date" class="input-sm" />
+                      </template>
+                      <template x-if="editingId!==task.id">
+                        <span :class="task.due_date && isOverdue(task) ? 'text-orange-600 font-medium' : 'text-slate-600'"
+                              x-text="task.due_date || '—'"></span>
+                      </template>
+                    </td>
+                    <td>
+                      <template x-if="editingId===task.id">
+                        <select x-model="editForm.status" class="input-sm">
+                          <template x-for="s in statuses" :key="s"><option :value="s" x-text="s"></option></template>
+                        </select>
+                      </template>
+                      <template x-if="editingId!==task.id">
+                        <span class="badge" :class="statusPill(task.status)" x-text="task.status"></span>
+                      </template>
+                    </td>
+                    <td>
+                      <div class="th-progress">
+                        <div class="th-progress-track">
+                          <div class="th-progress-fill" :style="'width:' + (task.progress || 0) + '%'"></div>
+                        </div>
+                        <span class="th-progress-pct" x-text="(task.progress || 0) + '%'"></span>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="flex items-center gap-1" x-show="editingId!==task.id">
+                        <button type="button" x-show="canEdit" @click="startEdit(task)" class="btn-ghost text-xs px-2 py-1">Edit</button>
+                        <button type="button" @click="openDetail(task)" class="btn-ghost text-xs px-2 py-1">···</button>
+                      </div>
+                      <div class="flex items-center gap-1" x-show="editingId===task.id">
+                        <button type="button" @click="saveEdit(task)" class="btn-primary text-xs">Save</button>
+                        <button type="button" @click="editingId=null" class="btn-ghost text-xs">✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <!-- quick add row -->
+                <tr x-show="canEdit && (currentProject || projects.length)" class="bg-emerald-50/40">
+                  <td></td>
+                  <td colspan="2">
+                    <input ref="newTaskTitle" x-model="newTask.title" @keydown.enter="createTask()" placeholder="+ New task name"
+                           class="input-sm w-full border-emerald-300" />
+                  </td>
+                  <td>
+                    <select x-model="newTask.type" class="input-sm">
+                      <template x-for="t in types" :key="'nt-'+t"><option :value="t" x-text="t"></option></template>
+                    </select>
+                  </td>
+                  <td></td>
+                  <td><input type="date" x-model="newTask.due_date" class="input-sm" /></td>
+                  <td>
+                    <select x-model="newTask.status" class="input-sm">
+                      <template x-for="s in statuses" :key="'ns-'+s"><option :value="s" x-text="s"></option></template>
+                    </select>
+                  </td>
+                  <td></td>
+                  <td><button type="button" @click="createTask()" class="btn-primary text-xs">Add</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div x-show="filteredTasks.length===0" class="p-10 text-center text-slate-400 text-sm">
+              Belum ada task. Gunakan + New atau baris hijau di atas.
+            </div>
+            <div class="th-footer">
+              <span x-text="filteredTasks.length + ' tasks'"></span>
+              <span>Plan365 · CAD/CAM</span>
+            </div>
+          </div>
+
+          <!-- KANBAN VIEW -->
+          <div x-show="subView==='kanban'" class="kanban-board-wrap">
+            <div class="kanban-board soft-scroll" id="kanban-board">
+              <template x-for="st in statuses" :key="st">
+                <div class="w-72 flex-shrink-0 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[70vh]">
+                  <div class="px-3 py-2.5 font-medium text-sm flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                    <span x-text="st"></span>
+                    <span class="text-xs text-slate-400" x-text="tasks.filter(t => t.status===st).length"></span>
+                  </div>
+                  <div class="flex-1 overflow-y-auto p-2 space-y-2 kanban-col soft-scroll" :data-status="st">
+                    <template x-for="task in tasks.filter(t => t.status===st)" :key="task.id">
+                      <div class="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-3 shadow-sm cursor-grab active:cursor-grabbing"
+                           :data-id="task.id" @click="openDetail(task)">
+                        <div class="text-sm font-medium mb-1.5 line-clamp-2" x-text="task.title"></div>
+                        <div class="flex flex-wrap gap-1 mb-2">
+                          <span class="badge" :class="typeClass(task.type)" x-text="task.type"></span>
+                          <span class="badge" :class="priorityClass(task.priority)" x-text="task.priority"></span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                          <span x-text="task.due_date || ''"></span>
+                          <span x-text="task.assignee_name || task.assignee_username || ''"></span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- CALENDAR VIEW -->
+          <div x-show="subView==='calendar'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+              <button @click="calPrev()" class="px-3 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm">← Prev</button>
+              <h3 class="font-semibold" x-text="calMonthLabel"></h3>
+              <button @click="calNext()" class="px-3 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm">Next →</button>
+            </div>
+            <div class="grid grid-cols-7 text-center text-xs font-medium text-slate-500 border-b border-slate-100 dark:border-slate-800">
+              <div class="py-2">Mon</div><div class="py-2">Tue</div><div class="py-2">Wed</div><div class="py-2">Thu</div>
+              <div class="py-2">Fri</div><div class="py-2">Sat</div><div class="py-2">Sun</div>
+            </div>
+            <div class="grid grid-cols-7 auto-rows-fr min-h-[420px]">
+              <template x-for="(day, di) in calDays" :key="di">
+                <div class="border-b border-r border-slate-100 dark:border-slate-800 p-1.5 min-h-[70px]"
+                     :class="day.isCurrentMonth ? '' : 'bg-slate-50/50 dark:bg-slate-950/40'">
+                  <div class="text-xs font-medium mb-1"
+                       :class="day.isToday ? 'w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center' : 'text-slate-600 dark:text-slate-400'"
+                       x-text="day.date"></div>
+                  <div class="space-y-0.5">
+                    <template x-for="t in day.tasks" :key="t.id">
+                      <div class="text-[10px] leading-tight px-1 py-0.5 rounded truncate cursor-default"
+                           :class="typeClass(t.type)"
+                           :title="t.title + ' (' + t.status + ')'"
+                           x-text="t.title"></div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- GANTT VIEW (Zenith-inspired) -->
+          <div x-show="subView==='gantt'"
+               x-init="$watch('subView', v => { if (v === 'gantt') scheduleRenderGantt(0); })"
+               class="zg-wrap" style="min-height: 560px;">
+            <!-- Summary stats -->
+            <div class="zg-stats">
+              <div class="zg-stat">
+                <div class="zg-stat-label">Overall progress</div>
+                <div class="zg-stat-value" x-text="ganttOverallProgress + '%'"></div>
+                <div class="zg-stat-sub" x-text="ganttVisibleCount + ' visible tasks'"></div>
+              </div>
+              <div class="zg-stat">
+                <div class="zg-stat-label">Tasks</div>
+                <div class="zg-stat-value" x-text="tasks.length"></div>
+                <div class="zg-stat-sub" x-text="tasks.filter(t => t.status==='In Progress').length + ' in progress'"></div>
+              </div>
+              <div class="zg-stat">
+                <div class="zg-stat-label">Overdue</div>
+                <div class="zg-stat-value text-orange-600" x-text="tasks.filter(t => isOverdue(t)).length"></div>
+                <div class="zg-stat-sub">past due date</div>
+              </div>
+              <div class="zg-stat">
+                <div class="zg-stat-label">Blocked</div>
+                <div class="zg-stat-value" x-text="tasks.filter(t => isTaskBlocked(t)).length"></div>
+                <div class="zg-stat-sub">waiting on deps</div>
+              </div>
+            </div>
+
+            <div class="zg-toolbar">
+              <button type="button" @click="ganttListCollapsed = !ganttListCollapsed; scheduleRenderGantt(0)"
+                      class="btn-ghost" :title="ganttListCollapsed ? 'Show task list' : 'Hide task list'">
+                <span x-text="ganttListCollapsed ? '» List' : '« List'"></span>
+              </button>
+              <button type="button" @click="ganttCollapseAll()" class="btn-ghost">Collapse groups</button>
+              <button type="button" @click="ganttExpandAll()" class="btn-ghost">Expand</button>
+              <span class="w-px h-4 bg-slate-200 dark:bg-slate-700"></span>
+              <button type="button" @click="ganttViewMode='Day'; scheduleRenderGantt(0)"
+                      :class="ganttViewMode==='Day' ? 'btn-primary' : 'btn-ghost'">Days</button>
+              <button type="button" @click="ganttViewMode='Week'; scheduleRenderGantt(0)"
+                      :class="ganttViewMode==='Week' ? 'btn-primary' : 'btn-ghost'">Week</button>
+              <button type="button" @click="ganttViewMode='Month'; scheduleRenderGantt(0)"
+                      :class="ganttViewMode==='Month' ? 'btn-primary' : 'btn-ghost'">Month</button>
+              <div class="flex flex-wrap items-center gap-2 ml-auto">
+                <select x-model="ganttFilterType" @change="scheduleRenderGantt()" class="input-sm text-xs">
+                  <option value="">Type: all</option>
+                  <template x-for="t in types" :key="'gt-'+t"><option :value="t" x-text="t"></option></template>
+                </select>
+                <select x-model="ganttFilterStatus" @change="scheduleRenderGantt()" class="input-sm text-xs">
+                  <option value="">Status: all</option>
+                  <template x-for="s in statuses" :key="'gs-'+s"><option :value="s" x-text="s"></option></template>
+                </select>
+                <label class="inline-flex items-center gap-1 text-xs cursor-pointer">
+                  <input type="checkbox" x-model="ganttShowCritical" @change="scheduleRenderGantt()" class="rounded" />
+                  Critical path
+                </label>
+                <button type="button" @click="toggleCascadeSchedule()" class="btn-ghost"
+                        :class="cascadeSchedule && 'ring-1 ring-blue-400'"
+                        title="Auto-shift FS successors when dates change">
+                  <span x-text="cascadeSchedule ? 'Cascade ON' : 'Cascade OFF'"></span>
+                </button>
+                <button type="button" @click="saveProjectBaseline()" class="btn-ghost" x-show="currentProject">Baseline</button>
+                <button type="button" @click="exportGanttSvg()" class="btn-ghost">SVG</button>
+                <button type="button" @click="exportGanttPng()" class="btn-ghost">PNG</button>
+                <button type="button" @click="exportCsv()" class="btn-ghost">CSV</button>
+              </div>
+            </div>
+
+            <div class="zg-body">
+              <!-- Left task list (collapsible) -->
+              <div class="zg-list" :class="ganttListCollapsed && 'collapsed'">
+                <div class="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b"
+                     style="border-color: var(--th-border)">
+                  Task name
+                </div>
+                <div class="flex-1 overflow-y-auto soft-scroll zg-list-scroll">
+                  <template x-for="grp in ganttGroups" :key="grp.key">
+                    <div>
+                      <button type="button" @click="toggleGanttGroup(grp.key)" class="zg-group-btn">
+                        <span class="transition-transform inline-block" :class="ganttCollapsed[grp.key] && '-rotate-90'">▾</span>
+                        <span class="w-2 h-2 rounded-full" :style="'background:' + (grp.color || '#7c3aed')"></span>
+                        <span class="truncate flex-1" x-text="grp.name"></span>
+                        <span class="text-slate-400 font-normal" x-text="grp.tasks.length"></span>
+                      </button>
+                      <template x-if="!ganttCollapsed[grp.key]">
+                        <div>
+                          <template x-for="t in grp.tasks" :key="t.id">
+                            <button type="button" @click="openDetail(t); highlightGantt(t.id)"
+                                    class="zg-task-row"
+                                    :class="detailTask && detailTask.id === t.id && 'active'">
+                              <span class="th-assignee-av !w-5 !h-5 !text-[9px] flex-shrink-0"
+                                    x-text="((t.assignee_name||t.assignee_username||'?')[0]||'?').toUpperCase()"></span>
+                              <span class="zg-title" x-text="t.title"></span>
+                            </button>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <!-- Chart -->
+              <div class="zg-chart">
+                <div id="gantt-target" class="gantt-target min-h-[420px]"></div>
+                <div x-show="ganttVisibleCount===0" class="text-center text-slate-400 py-16 text-sm">
+                  Tidak ada task bertanggal untuk Gantt.
+                </div>
+              </div>
+            </div>
+
+            <div class="zg-footer-cards">
+              <div class="zg-foot-card">
+                <h4>Critical path</h4>
+                <div class="val" x-text="ganttShowCritical ? 'Highlighted on chart' : 'Enable toggle above'"></div>
+              </div>
+              <div class="zg-foot-card">
+                <h4>Visible range</h4>
+                <div class="val" x-text="ganttViewMode + ' · ' + ganttVisibleCount + ' tasks'"></div>
+              </div>
+              <div class="zg-foot-card">
+                <h4>Done</h4>
+                <div class="val" x-text="tasks.filter(t => t.status==='Done' || t.status==='Handoff').length + ' / ' + tasks.length"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+      
+      <!-- DASHBOARD OVERVIEW -->
+      <div x-show="view==='dashboard'" class="th-page"
+           x-init="$watch('view', v => { if (v==='dashboard') loadDashboard(); })">
+        <div class="th-page-inner th-page-wide space-y-4">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h2 class="text-xl font-semibold">Dashboard</h2>
+              <p class="text-sm text-slate-500">Overview · project health · team capacity analysis</p>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" class="btn-ghost text-sm" @click="loadDashboard()" :disabled="dashLoading"
+                      x-text="dashLoading ? 'Loading…' : 'Refresh'"></button>
+              <button type="button" class="btn-ghost text-sm" @click="view='workload'; loadWorkload()">Capacity detail</button>
+            </div>
+          </div>
+
+          <!-- KPI row -->
+          <div class="dash-kpi-grid">
+            <div class="dash-kpi">
+              <div class="dash-kpi-label">Active projects</div>
+              <div class="dash-kpi-value" x-text="dashboard?.kpi?.active_projects ?? '—'"></div>
+              <div class="dash-kpi-sub" x-text="(dashboard?.kpi?.total_projects||0) + ' total'"></div>
+            </div>
+            <div class="dash-kpi">
+              <div class="dash-kpi-label">Open tasks</div>
+              <div class="dash-kpi-value" x-text="dashboard?.kpi?.open_tasks ?? '—'"></div>
+              <div class="dash-kpi-sub" x-text="(dashboard?.kpi?.in_progress||0) + ' in progress'"></div>
+            </div>
+            <div class="dash-kpi">
+              <div class="dash-kpi-label">Overdue</div>
+              <div class="dash-kpi-value" :class="(dashboard?.kpi?.overdue||0)>0 && 'text-red-600'"
+                   x-text="dashboard?.kpi?.overdue ?? '—'"></div>
+              <div class="dash-kpi-sub" x-text="(dashboard?.kpi?.due_week||0) + ' due this week'"></div>
+            </div>
+            <div class="dash-kpi">
+              <div class="dash-kpi-label">Team utilization</div>
+              <div class="dash-kpi-value" x-text="(dashboard?.capacity?.team?.utilization ?? 0) + '%'"></div>
+              <div class="dash-kpi-sub" x-text="(dashboard?.capacity?.team?.effort_open||0) + 'h / ' + (dashboard?.capacity?.team?.capacity_hours||0) + 'h'"></div>
+            </div>
+          </div>
+
+          <div class="dash-grid-2">
+            <!-- Project summary -->
+            <div class="dash-card">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="!mb-0">Project summary</h3>
+                <button type="button" class="btn-ghost text-xs" @click="view='projects'; loadProjects()">Manage</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="th-table w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Health</th>
+                      <th>Due</th>
+                      <th>Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="p in (dashboard?.projects || [])" :key="'dp-'+p.id">
+                      <tr class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          @click="selectProject(projects.find(x => x.id===p.id) || p)">
+                        <td>
+                          <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full" :style="'background:'+(p.color||'#3b82f6')"></span>
+                            <span class="font-medium truncate max-w-[160px]" x-text="p.name"></span>
+                          </div>
+                        </td>
+                        <td><span class="badge text-[10px]" :class="healthBadge(p.health)" x-text="healthLabel(p.health)"></span></td>
+                        <td class="tabular-nums text-slate-500 text-xs" x-text="p.due_date || '—'"></td>
+                        <td style="min-width:100px">
+                          <div class="flex items-center gap-2">
+                            <div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div class="h-full rounded-full bg-indigo-500" :style="'width:'+(p.progress||0)+'%'"></div>
+                            </div>
+                            <span class="text-xs tabular-nums w-8" x-text="(p.progress||0)+'%'"></span>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <p x-show="!(dashboard?.projects||[]).length" class="text-sm text-slate-400 py-6 text-center">No projects</p>
+              </div>
+            </div>
+
+            <!-- Overall progress + capacity analysis -->
+            <div class="space-y-4">
+              <div class="dash-card">
+                <h3>Overall progress</h3>
+                <div class="dash-gauge-wrap">
+                  <div class="dash-gauge">
+                    <svg width="160" height="100" viewBox="0 0 160 100" aria-hidden="true">
+                      <path d="M 20 88 A 60 60 0 0 1 140 88" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
+                      <path d="M 20 88 A 60 60 0 0 1 140 88" fill="none" stroke="#6366f1" stroke-width="14" stroke-linecap="round"
+                            stroke-dasharray="188.5" :stroke-dashoffset="gaugeOffset(dashboard?.kpi?.overall_progress || 0)"
+                            style="transition: stroke-dashoffset 0.4s ease" />
+                    </svg>
+                    <div class="dash-gauge-label">
+                      <div class="dash-gauge-pct" x-text="(dashboard?.kpi?.overall_progress ?? 0) + '%'"></div>
+                      <div class="dash-gauge-sub">completed</div>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div><span class="text-slate-500">Done</span> <strong x-text="dashboard?.kpi?.done_tasks||0"></strong></div>
+                    <div><span class="text-slate-500">Open</span> <strong x-text="dashboard?.kpi?.open_tasks||0"></strong></div>
+                    <div><span class="text-slate-500">Milestones</span> <strong x-text="dashboard?.kpi?.open_milestones||0"></strong></div>
+                    <div><span class="text-slate-500">Avg progress</span> <strong x-text="(dashboard?.kpi?.avg_open_progress||0)+'%'"></strong></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dash-card">
+                <h3>Capacity analysis</h3>
+                <div class="text-xs text-slate-500 mb-2">
+                  Available pool:
+                  <strong class="text-slate-700" x-text="(dashboard?.capacity?.team?.available_hours||0)+'h'"></strong>
+                  · Overloaded:
+                  <strong :class="(dashboard?.capacity?.team?.overloaded_members||0)>0 && 'text-red-600'"
+                          x-text="dashboard?.capacity?.team?.overloaded_members||0"></strong>
+                </div>
+                <div class="dash-mini-bars">
+                  <template x-for="m in (dashboard?.capacity?.members || []).filter(x => x.assignee_id).slice(0,8)" :key="'cm-'+m.assignee_id">
+                    <div class="dash-mini-row">
+                      <span class="name" x-text="m.assignee_name" :title="m.assignee_name"></span>
+                      <div class="bar"><i :style="'width:'+Math.min(100,m.utilization||0)+'%;background:'+capacityBarColor(m.utilization||0)"></i></div>
+                      <span class="tabular-nums w-10 text-right" x-text="(m.utilization||0)+'%'"></span>
+                    </div>
+                  </template>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-2 text-xs" x-show="(dashboard?.capacity?.bottlenecks||[]).length">
+                  <div>
+                    <div class="font-semibold text-amber-700 mb-1">Bottlenecks</div>
+                    <template x-for="b in (dashboard?.capacity?.bottlenecks||[]).slice(0,4)" :key="'bn-'+b.assignee_id">
+                      <div class="truncate" x-text="b.assignee_name + ' · ' + b.effort_open + 'h'"></div>
+                    </template>
+                  </div>
+                  <div>
+                    <div class="font-semibold text-emerald-700 mb-1">Available</div>
+                    <template x-for="b in (dashboard?.capacity?.available||[]).slice(0,4)" :key="'av-'+b.assignee_id">
+                      <div class="truncate" x-text="b.assignee_name + ' · +' + b.available_hours + 'h'"></div>
+                    </template>
+                    <p x-show="!(dashboard?.capacity?.available||[]).length" class="text-slate-400">—</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-grid-2">
+            <!-- Upcoming -->
+            <div class="dash-card">
+              <h3>Due this week</h3>
+              <div class="space-y-1.5">
+                <template x-for="t in (dashboard?.upcoming || [])" :key="'up-'+t.id">
+                  <button type="button" class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+                          @click="openDetail(tasks.find(x=>x.id===t.id)||t)">
+                    <span class="badge text-[10px]" :class="'st-'+(t.status||'').toLowerCase().replace(/\\s+/g,'-')" x-text="t.status"></span>
+                    <span class="flex-1 text-sm truncate font-medium" x-text="t.title"></span>
+                    <span class="text-[10px] text-slate-400 truncate max-w-[80px]" x-text="t.project_name"></span>
+                    <span class="text-xs tabular-nums text-slate-500" x-text="t.due_date"></span>
+                  </button>
+                </template>
+                <p x-show="!(dashboard?.upcoming||[]).length" class="text-sm text-slate-400 py-4 text-center">Tidak ada task jatuh tempo 7 hari ke depan.</p>
+              </div>
+            </div>
+
+            <!-- Type mix -->
+            <div class="dash-card">
+              <h3>Work type mix</h3>
+              <div class="dash-mini-bars">
+                <template x-for="t in (dashboard?.type_mix || [])" :key="'tm-'+t.label">
+                  <div class="dash-mini-row">
+                    <span class="name" x-text="t.label"></span>
+                    <div class="bar">
+                      <i :style="'width:' + Math.min(100, ((t.open_count||0)/Math.max(1,dashboard?.kpi?.open_tasks||1))*100) + '%;background:#8b5cf6'"></i>
+                    </div>
+                    <span class="tabular-nums w-14 text-right text-slate-500"
+                          x-text="(t.open_count||0)+'/'+(t.total||0)"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+<!-- PROJECTS MGMT -->
+      <div x-show="view==='projects'" class="th-page">
+        <div class="th-page-inner th-page-wide">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h2 class="text-xl font-semibold">Project management</h2>
+              <p class="text-sm text-slate-500">Status, dates, references &amp; supporting data</p>
+            </div>
+            <div class="flex gap-2 items-center">
+              <select class="input-sm text-xs" x-model="projectFilterStatus" @change="loadProjects()">
+                <option value="Active">Active only</option>
+                <option value="">All statuses</option>
+                <option value="On Hold">On Hold</option>
+                <option value="Completed">Completed</option>
+                <option value="Archived">Archived</option>
+              </select>
+              <button type="button" class="btn-primary text-sm" @click="openNewProject()" x-show="canEdit">+ New</button>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <table class="th-table w-full text-sm">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Start</th>
+                  <th>Due</th>
+                  <th>Tasks</th>
+                  <th>Reference</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="p in projects" :key="'pm-'+p.id">
+                  <tr>
+                    <td>
+                      <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="'background:'+(p.color||'#3b82f6')"></span>
+                        <span class="font-medium" x-text="p.name"></span>
+                      </div>
+                    </td>
+                    <td><span class="badge" x-text="p.status || 'Active'"></span></td>
+                    <td class="tabular-nums text-slate-500" x-text="p.start_date || '—'"></td>
+                    <td class="tabular-nums text-slate-500" x-text="p.due_date || '—'"></td>
+                    <td class="tabular-nums" x-text="p.task_count || 0"></td>
+                    <td class="text-xs text-slate-500 truncate max-w-[140px]" x-text="p.reference || '—'"></td>
+                    <td class="text-right whitespace-nowrap">
+                      <button type="button" class="btn-ghost text-xs" @click="selectProject(p); view='project'">Open</button>
+                      <button type="button" class="btn-ghost text-xs" x-show="canEdit" @click="openEditProject(p)">Edit</button>
+                      <button type="button" class="btn-ghost text-xs text-red-600" x-show="user?.role==='admin'" @click="deleteProject(p)">Delete</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p x-show="!projects.length" class="text-center text-slate-400 py-10 text-sm">No projects</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- WORKLOAD -->
+      <div x-show="view==='workload'" class="th-page" x-init="$watch('view', v => { if (v==='workload') loadWorkload(); })">
+        <div class="th-page-inner th-page-wide">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h2 class="text-xl font-semibold">Team capacity</h2>
+              <p class="text-sm text-slate-500">Load vs weekly capacity · effort hours · utilization</p>
+            </div>
+            <button type="button" class="btn-ghost" @click="loadWorkload()">Refresh</button>
+          </div>
+
+          <!-- Team summary -->
+          <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3" x-show="workload.team">
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Team utilization</div>
+              <div class="text-2xl font-bold mt-1" x-text="(workload.team?.utilization || 0) + '%'"></div>
+              <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full rounded-full transition-all" :style="'width:' + Math.min(100, workload.team?.utilization||0) + '%;background:' + capacityBarColor(workload.team?.utilization||0)"></div>
+              </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Capacity / week</div>
+              <div class="text-2xl font-bold mt-1" x-text="(workload.team?.capacity_hours || 0) + 'h'"></div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Open effort</div>
+              <div class="text-2xl font-bold mt-1" x-text="(workload.team?.effort_open || 0) + 'h'"></div>
+              <div class="text-xs text-slate-500" x-text="(workload.team?.open_tasks||0) + ' tasks'"></div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+              <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Overloaded</div>
+              <div class="text-2xl font-bold mt-1" :class="(workload.team?.overloaded_members||0)>0 && 'text-red-600'"
+                   x-text="workload.team?.overloaded_members || 0"></div>
+            </div>
+          </div>
+          <div class="grid lg:grid-cols-2 gap-4">
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 flex gap-6 items-center flex-wrap">
+              <div class="text-center">
+                <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Open tasks</div>
+                <div class="wl-donut" :style="'background:' + (workloadOpenPie.gradient || 'conic-gradient(#e2e8f0 0 360deg)')">
+                  <div class="wl-donut-hole">
+                    <div class="text-lg font-bold text-slate-800 dark:text-slate-100" x-text="workloadOpenPie.total || 0"></div>
+                    <div class="text-[10px] text-slate-500">open</div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-1 space-y-1.5 wl-legend min-w-[140px]">
+                <template x-for="s in workloadOpenPie.slices" :key="'lo-'+s.label">
+                  <div class="flex items-center gap-2 text-sm">
+                    <span class="wl-legend-dot" :style="'background:'+s.color"></span>
+                    <span class="truncate flex-1 text-slate-700 dark:text-slate-200" x-text="s.label"></span>
+                    <span class="tabular-nums text-slate-500" x-text="s.value + ' (' + s.pct + '%)'"></span>
+                  </div>
+                </template>
+                <p x-show="!workloadOpenPie.slices.length" class="text-slate-400 text-sm">No open tasks</p>
+              </div>
+            </div>
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 flex gap-6 items-center flex-wrap">
+              <div class="text-center">
+                <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Overdue</div>
+                <div class="wl-donut" :style="'background:' + (workloadOverduePie.gradient || 'conic-gradient(#e2e8f0 0 360deg)')">
+                  <div class="wl-donut-hole">
+                    <div class="text-lg font-bold text-slate-800 dark:text-slate-100" x-text="workloadOverduePie.total || 0"></div>
+                    <div class="text-[10px] text-slate-500">late</div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex-1 space-y-1.5 wl-legend min-w-[140px]">
+                <template x-for="s in workloadOverduePie.slices" :key="'le-'+s.label">
+                  <div class="flex items-center gap-2 text-sm">
+                    <span class="wl-legend-dot" :style="'background:'+s.color"></span>
+                    <span class="truncate flex-1 text-slate-700 dark:text-slate-200" x-text="s.label"></span>
+                    <span class="tabular-nums text-slate-500" x-text="s.value + ' (' + s.pct + '%)'"></span>
+                  </div>
+                </template>
+                <p x-show="!workloadOverduePie.slices.length" class="text-slate-400 text-sm">No overdue</p>
+              </div>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 class="font-medium text-sm">Member capacity</h3>
+              <span class="text-[10px] text-slate-400">Effort kosong ≈ 4h × open tasks</span>
+            </div>
+            <div class="divide-y divide-slate-100 dark:divide-slate-800">
+              <template x-for="a in (workload.assignees || [])" :key="'w-'+(a.assignee_id||'none')">
+                <div class="px-4 py-3 flex flex-wrap items-center gap-3">
+                  <span class="th-assignee-av" x-text="(a.assignee_name||'?')[0].toUpperCase()"></span>
+                  <div class="min-w-[120px] flex-1">
+                    <div class="font-semibold text-sm" x-text="a.assignee_name"></div>
+                    <div class="text-[11px] text-slate-500">
+                      <span x-text="a.effort_open + 'h load'"></span>
+                      <span x-show="a.effort_estimated" class="text-amber-600"> · est.</span>
+                      <span x-text="' · ' + (a.open_count||0) + ' open'"></span>
+                      <span x-show="a.overdue_count" class="text-red-600" x-text="' · ' + a.overdue_count + ' overdue'"></span>
+                    </div>
+                  </div>
+                  <div class="w-40">
+                    <div class="flex justify-between text-[10px] mb-0.5">
+                      <span x-text="(a.utilization||0) + '%'"></span>
+                      <span class="uppercase font-bold"
+                            :class="{
+                              'text-red-600': a.status==='overloaded',
+                              'text-amber-600': a.status==='tight',
+                              'text-emerald-600': a.status==='balanced',
+                              'text-indigo-600': a.status==='available'
+                            }"
+                            x-text="a.status"></span>
+                    </div>
+                    <div class="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                      <div class="h-full rounded-full" :style="'width:' + Math.min(100, a.utilization||0) + '%;background:' + capacityBarColor(a.utilization||0)"></div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 text-xs" x-show="a.assignee_id && user?.role==='admin'">
+                    <input type="number" min="0" max="168" class="input-sm w-16 text-xs"
+                           x-model.number="a.weekly_capacity" @change="saveAssigneeCapacity(a)" title="Hours / week" />
+                    <span class="text-slate-400">h/w</span>
+                  </div>
+                  <div class="text-xs text-slate-500 tabular-nums" x-show="!a.assignee_id || user?.role!=='admin'"
+                       x-text="(a.weekly_capacity||0) + 'h/w'"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+            <h3 class="font-medium mb-3">Upcoming milestones</h3>
+            <div class="space-y-2">
+              <template x-for="m in (workload.milestones_upcoming || [])" :key="'ms-'+m.id">
+                <button type="button" class="w-full text-left flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+                        @click="openDetail(tasks.find(t => t.id===m.id) || m)">
+                  <span class="badge bg-violet-100 text-violet-700">◆</span>
+                  <span class="flex-1 text-sm font-medium truncate" x-text="m.title"></span>
+                  <span class="text-xs text-slate-500" x-text="m.project_name"></span>
+                  <span class="text-xs tabular-nums" x-text="m.due_date || '—'"></span>
+                </button>
+              </template>
+              <p x-show="!(workload.milestones_upcoming||[]).length" class="text-sm text-slate-400">Tidak ada milestone terbuka.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+<!-- SETTINGS -->
+        
+        <!-- AI PLANNING -->
+        <div x-show="view==='ai'" class="th-page" x-cloak>
+          <div class="th-page-inner th-page-wide space-y-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="text-xl font-semibold">AI Planning</h2>
+                <p class="text-sm text-slate-500">Local planner + optional LLM for schedule, capacity &amp; focus</p>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" class="btn-secondary text-sm" @click="loadAiAnalyze()" :disabled="aiLoading">
+                  <span x-text="aiLoading ? 'Analyzing…' : 'Refresh analysis'"></span>
+                </button>
+                <button type="button" class="btn-outline text-sm" @click="loadAiSyncPreview()">Export snapshot</button>
+              </div>
+            </div>
+
+            <div class="dash-kpi-grid" x-show="aiAnalysis">
+              <div class="dash-kpi">
+                <div class="dash-kpi-label">Open tasks</div>
+                <div class="dash-kpi-value" x-text="aiAnalysis?.summary?.open_tasks ?? '—'"></div>
+              </div>
+              <div class="dash-kpi">
+                <div class="dash-kpi-label">Overdue</div>
+                <div class="dash-kpi-value" x-text="aiAnalysis?.summary?.overdue ?? '—'"></div>
+              </div>
+              <div class="dash-kpi">
+                <div class="dash-kpi-label">Due this week</div>
+                <div class="dash-kpi-value" x-text="aiAnalysis?.summary?.due_this_week ?? '—'"></div>
+              </div>
+              <div class="dash-kpi">
+                <div class="dash-kpi-label">Overloaded</div>
+                <div class="dash-kpi-value" x-text="aiAnalysis?.summary?.overloaded_members ?? '—'"></div>
+              </div>
+            </div>
+
+            <div class="dash-grid-2">
+              <div class="dash-card">
+                <h3>Risks</h3>
+                <div class="space-y-2">
+                  <template x-for="(r, i) in (aiAnalysis?.risks || [])" :key="'risk-'+i">
+                    <div class="flex gap-2 items-start text-sm border border-slate-200 dark:border-slate-700 rounded-lg p-2">
+                      <span class="badge ui-badge" :class="severityClass(r.severity)" x-text="r.severity"></span>
+                      <div class="min-w-0">
+                        <div class="font-medium" x-text="r.title"></div>
+                        <div class="text-xs text-slate-500" x-text="r.detail"></div>
+                      </div>
+                    </div>
+                  </template>
+                  <p x-show="!(aiAnalysis?.risks||[]).length" class="text-sm text-slate-400">No major risks detected.</p>
+                </div>
+              </div>
+              <div class="dash-card">
+                <h3>Recommended actions</h3>
+                <ol class="list-decimal pl-4 space-y-2 text-sm">
+                  <template x-for="(a, i) in (aiAnalysis?.recommended_actions || [])" :key="'act-'+i">
+                    <li>
+                      <span class="font-medium" x-text="a.action"></span>
+                      <div class="text-xs text-slate-500" x-text="a.why"></div>
+                    </li>
+                  </template>
+                </ol>
+                <p x-show="!(aiAnalysis?.recommended_actions||[]).length" class="text-sm text-slate-400">No actions yet.</p>
+              </div>
+            </div>
+
+            <div class="dash-grid-2">
+              <div class="dash-card">
+                <h3>Focus queue</h3>
+                <div class="space-y-1">
+                  <template x-for="(t, i) in (aiAnalysis?.focus_queue || [])" :key="'fq-'+t.id">
+                    <button type="button" class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-sm"
+                            @click="const task = tasks.find(x => x.id===t.id); if (task) openDetail(task);">
+                      <span class="text-slate-400 tabular-nums w-5" x-text="(i+1)+'.'"></span>
+                      <span class="flex-1 truncate font-medium" x-text="t.title"></span>
+                      <span class="text-xs text-slate-500 truncate max-w-[6rem]" x-text="t.project"></span>
+                      <span class="badge text-[10px]" x-text="t.priority"></span>
+                      <span class="text-xs tabular-nums text-slate-500" x-text="t.due_date || '—'"></span>
+                    </button>
+                  </template>
+                  <p x-show="!(aiAnalysis?.focus_queue||[]).length" class="text-sm text-slate-400">Run analysis to build queue.</p>
+                </div>
+              </div>
+
+              <div class="dash-card flex flex-col min-h-[280px]">
+                <h3>Ask assistant</h3>
+                <p class="text-xs text-slate-500 mb-2">
+                  Local planner always on.
+                  <span x-show="aiSettings.ai_enabled && aiSettings.ai_api_key_set">LLM: on</span>
+                  <span x-show="!(aiSettings.ai_enabled && aiSettings.ai_api_key_set)">LLM: off (optional below)</span>
+                </p>
+                <div class="flex-1 overflow-y-auto soft-scroll space-y-2 mb-2 max-h-48 border border-slate-200 dark:border-slate-700 rounded-lg p-2">
+                  <template x-for="(m, i) in aiChatLog" :key="'ch-'+i">
+                    <div class="text-sm" :class="m.role==='user' ? 'text-right' : ''">
+                      <div class="inline-block text-left max-w-[95%] rounded-lg px-2.5 py-1.5 whitespace-pre-wrap"
+                           :class="m.role==='user' ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'bg-slate-100 dark:bg-slate-800'"
+                           x-text="m.text"></div>
+                      <div class="text-[10px] text-slate-400" x-show="m.mode" x-text="'mode: '+m.mode"></div>
+                    </div>
+                  </template>
+                  <p x-show="!aiChatLog.length" class="text-xs text-slate-400 p-2">Try: “What should the team focus on this week?”</p>
+                </div>
+                <div class="flex gap-2">
+                  <input class="ui-input flex-1" x-model="aiChatInput" @keydown.enter="runAiChat()"
+                         placeholder="Ask about plan, risks, capacity…" :disabled="aiLoading" />
+                  <button type="button" class="btn-primary" @click="runAiChat()" :disabled="aiLoading">Send</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-card" x-show="user?.role==='admin'">
+              <h3>AI provider (optional)</h3>
+              <p class="text-xs text-slate-500 mb-3">OpenAI-compatible API. Leave off for local planner only (recommended on 2GB SBC).</p>
+              <div class="grid sm:grid-cols-2 gap-3">
+                <label class="flex items-center gap-2 text-sm">
+                  <input type="checkbox" x-model="aiSettingsForm.ai_enabled" class="rounded" />
+                  Enable external LLM
+                </label>
+                <div>
+                  <label class="ui-label">Model</label>
+                  <input class="input-sm w-full" x-model="aiSettingsForm.ai_model" placeholder="gpt-4o-mini" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="ui-label">API base URL</label>
+                  <input class="input-sm w-full" x-model="aiSettingsForm.ai_api_url" placeholder="https://api.openai.com/v1" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="ui-label">API key</label>
+                  <input class="input-sm w-full" type="password" x-model="aiSettingsForm.ai_api_key"
+                         :placeholder="aiSettings.ai_api_key_set ? aiSettings.ai_api_key_masked : 'sk-…'" />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="ui-label">System prompt</label>
+                  <textarea class="ui-textarea w-full" rows="3" x-model="aiSettingsForm.ai_system_prompt"></textarea>
+                </div>
+              </div>
+              <div class="mt-3">
+                <button type="button" class="btn-primary text-sm" @click="saveAiSettings()">Save AI settings</button>
+              </div>
+            </div>
+
+            <div class="dash-card" x-show="aiPreview">
+              <h3>Snapshot JSON</h3>
+              <pre class="text-xs bg-slate-950 text-emerald-400 p-3 rounded-xl overflow-auto max-h-56 soft-scroll" x-text="aiPreview"></pre>
+            </div>
+          </div>
+        </div>
+<div x-show="view==='settings'" class="th-page">
+          <div class="th-page-inner space-y-6">
+          <h2 class="text-xl font-semibold">Settings</h2>
+
+          <!-- Appearance -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h3 class="font-medium mb-4">Appearance</h3>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1">Theme</label>
+                <select x-model="theme" @change="applyTheme()" class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Default View</label>
+                <select x-model="pref.default_view" @change="savePrefs()" class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm">
+                  <option value="list">List</option>
+                  <option value="kanban">Kanban</option>
+                  <option value="calendar">Calendar</option>
+                  <option value="gantt">Gantt</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Task Parameters -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h3 class="font-medium mb-1">Task Parameters</h3>
+            <p class="text-xs text-slate-500 mb-4">Nilai Type / Priority / Status untuk dropdown task (pisahkan dengan koma).</p>
+            <div class="space-y-3 text-sm" x-show="user?.role!=='admin'">
+              <div class="flex flex-wrap gap-1"><template x-for="t in types" :key="'ro-t-'+t"><span class="badge" :class="typeClass(t)" x-text="t"></span></template></div>
+              <div class="flex flex-wrap gap-1"><template x-for="p in priorities" :key="'ro-p-'+p"><span class="badge" :class="priorityClass(p)" x-text="p"></span></template></div>
+              <div class="flex flex-wrap gap-1"><template x-for="s in statuses" :key="'ro-s-'+s"><span class="badge" :class="statusClass(s)" x-text="s"></span></template></div>
+            </div>
+            <div class="space-y-3" x-show="user?.role==='admin'">
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Types</label>
+                <input type="text" x-model="settingsEdit.task_types" class="w-full input-sm"
+                       placeholder="2D CAD, CAD, CAM, Tools, Others" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Priorities</label>
+                <input type="text" x-model="settingsEdit.priorities" class="w-full input-sm"
+                       placeholder="High, Medium, Low" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Statuses</label>
+                <input type="text" x-model="settingsEdit.statuses" class="w-full input-sm"
+                       placeholder="Todo, In Progress, Review, Done, ..." />
+              </div>
+              <div class="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-slate-500 mb-1">Default type</label>
+                  <input type="text" x-model="settingsEdit.default_type" class="w-full input-sm" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500 mb-1">Default priority</label>
+                  <input type="text" x-model="settingsEdit.default_priority" class="w-full input-sm" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500 mb-1">Default status</label>
+                  <input type="text" x-model="settingsEdit.default_status" class="w-full input-sm" />
+                </div>
+              </div>
+              <button type="button" @click="saveTaskParams()" class="btn-primary">Save task parameters</button>
+            </div>
+          </div>
+
+          
+          <!-- Project task templates -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6"
+               x-init="$watch('view', v => { if (v==='settings') loadTemplates(); })">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" class="text-left flex-1 min-w-[12rem]" @click="templatesOpen = !templatesOpen">
+                <h3 class="font-medium flex items-center gap-2">
+                  <span class="text-slate-400 transition-transform inline-block" :class="!templatesOpen && '-rotate-90'">▾</span>
+                  Project task templates
+                </h3>
+                <p class="text-xs text-slate-500">Presets applied when creating a new project</p>
+              </button>
+              <div class="flex flex-wrap gap-2" x-show="templatesOpen">
+                <button type="button" class="btn-ghost text-xs" @click="templateEditMode = templateEditMode==='list' ? 'json' : 'list'; templateEditJson = JSON.stringify(templateEdit, null, 2)">
+                  <span x-text="templateEditMode==='list' ? 'JSON' : 'List'"></span>
+                </button>
+                <button type="button" class="btn-ghost text-xs" @click.stop="addEmptyTemplate()" x-show="user?.role==='admin'">+ Template</button>
+                <button type="button" class="btn-ghost text-xs" @click.stop="resetTemplates()" x-show="user?.role==='admin'">Reset defaults</button>
+                <button type="button" class="btn-primary text-xs" @click.stop="saveTemplates()" x-show="user?.role==='admin'">Save templates</button>
+              </div>
+            </div>
+            <div x-show="templatesOpen" class="mt-4">
+
+            <div x-show="templateEditMode==='json'" class="space-y-2">
+              <textarea x-model="templateEditJson" rows="16"
+                        class="w-full font-mono text-xs input-sm p-3" style="min-height:280px"></textarea>
+            </div>
+
+            <div x-show="templateEditMode==='list'" class="space-y-4">
+              <template x-for="(tpl, tIdx) in templateEdit" :key="tpl.id">
+                <div class="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                  <div class="flex flex-wrap gap-2 items-start">
+                    <div class="flex-1 min-w-[140px] space-y-1">
+                      <input class="input-sm w-full font-semibold" x-model="tpl.name" :disabled="user?.role!=='admin'" />
+                      <input class="input-sm w-full text-xs" x-model="tpl.id" placeholder="id" :disabled="user?.role!=='admin'" />
+                      <input class="input-sm w-full text-xs" x-model="tpl.description" placeholder="Description" :disabled="user?.role!=='admin'" />
+                    </div>
+                    <button type="button" class="btn-ghost text-xs text-red-600" x-show="user?.role==='admin'" @click="removeTemplate(tIdx)">Remove</button>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="th-table w-full text-xs">
+                      <thead>
+                        <tr>
+                          <th>#</th><th>Title</th><th>Type</th><th>Pri</th><th>Effort</th><th>Offset</th><th>Days</th><th>MS</th><th>Deps</th><th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <template x-for="(task, i) in (tpl.tasks||[])" :key="tIdx+'-'+i">
+                          <tr>
+                            <td class="tabular-nums text-slate-400" x-text="i"></td>
+                            <td><input class="input-sm w-36" x-model="task.title" :disabled="user?.role!=='admin'" /></td>
+                            <td>
+                              <select class="input-sm" x-model="task.type" :disabled="user?.role!=='admin'">
+                                <option>2D CAD</option><option>CAD</option><option>CAM</option><option>Tools</option><option>Others</option>
+                              </select>
+                            </td>
+                            <td>
+                              <select class="input-sm" x-model="task.priority" :disabled="user?.role!=='admin'">
+                                <option>High</option><option>Medium</option><option>Low</option>
+                              </select>
+                            </td>
+                            <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.effort" :disabled="user?.role!=='admin'" /></td>
+                            <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.offset_start_days" :disabled="user?.role!=='admin'" /></td>
+                            <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.duration_days" :disabled="user?.role!=='admin'" /></td>
+                            <td><input type="checkbox" x-model="task.is_milestone" :disabled="user?.role!=='admin'" /></td>
+                            <td>
+                              <input class="input-sm w-16" :value="(task.depends_on||[]).join(',')"
+                                     @change="task.depends_on = ($event.target.value||'').split(',').map(s=>s.trim()).filter(s=>s!=='').map(Number)"
+                                     placeholder="0,1" :disabled="user?.role!=='admin'" title="Predecessor indices" />
+                            </td>
+                            <td>
+                              <button type="button" class="btn-ghost text-xs text-red-600" x-show="user?.role==='admin'" @click="removeTemplateTask(tIdx, i)">×</button>
+                            </td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" class="btn-ghost text-xs" x-show="user?.role==='admin'" @click="addTemplateTask(tIdx)">+ Task</button>
+                </div>
+              </template>
+              <p x-show="!templateEdit.length" class="text-sm text-slate-400">No templates — Reset defaults or add one.</p>
+            </div>
+            </div>
+          </div>
+
+<!-- Users & Assignees -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+            <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
+              <div>
+                <h3 class="font-medium">Users & Assignees</h3>
+                <p class="text-xs text-slate-500">Daftar user yang bisa di-assign ke task</p>
+              </div>
+              <button type="button" x-show="user?.role==='admin'" @click="showNewUser=true" class="btn-primary text-xs">+ Add user</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                    <th class="py-2 pr-2">User</th>
+                    <th class="py-2 pr-2">Email</th>
+                    <th class="py-2 pr-2">Role</th>
+                    <th class="py-2" x-show="user?.role==='admin'"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="u in users" :key="u.id">
+                    <tr class="border-b border-slate-100 dark:border-slate-800">
+                      <td class="py-2.5 pr-2">
+                        <div class="flex items-center gap-2">
+                          <span class="th-assignee-av" x-text="((u.full_name||u.username||'?')[0]||'?').toUpperCase()"></span>
+                          <div>
+                            <div class="font-medium" x-text="u.full_name || u.username"></div>
+                            <div class="text-xs text-slate-400" x-text="'@'+u.username"></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="py-2.5 pr-2 text-slate-600 dark:text-slate-300" x-text="u.email"></td>
+                      <td class="py-2.5 pr-2">
+                        <template x-if="user?.role==='admin' && u.id !== user.id">
+                          <select class="input-sm" :value="u.role" @change="updateUserRole(u, $event.target.value)">
+                            <option value="user">user</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        </template>
+                        <template x-if="!(user?.role==='admin' && u.id !== user.id)">
+                          <span class="badge" x-text="u.role"></span>
+                        </template>
+                      </td>
+                      <td class="py-2.5 space-x-1" x-show="user?.role==='admin'">
+                        <button type="button" class="btn-ghost text-xs"
+                                x-show="u.id !== user.id" @click="openEditUser(u)">Edit</button>
+                        <button type="button" class="btn-ghost text-xs text-red-600"
+                                x-show="u.id !== user.id" @click="deactivateUser(u)">Deactivate</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+<!-- Auth info -->
+          <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h3 class="font-medium mb-4">Authentication</h3>
+            <div class="text-sm space-y-2 text-slate-600 dark:text-slate-300">
+              <p>Logged in as: <strong x-text="user?.username"></strong> (<span x-text="user?.role"></span>)</p>
+              <div class="flex items-center gap-2" x-show="user?.role==='admin'">
+                <span>Public registration:</span>
+                <button type="button" class="btn-ghost text-xs" @click="toggleRegistration()"
+                        x-text="(settings.allow_registration===true || settings.allow_registration==='true') ? 'Enabled — click to disable' : 'Disabled — click to enable'"></button>
+              </div>
+              <p x-show="user?.role!=='admin'">
+                Public registration:
+                <span x-show="settings.allow_registration===true || settings.allow_registration==='true'" class="text-emerald-600">Enabled</span>
+                <span x-show="!(settings.allow_registration===true || settings.allow_registration==='true')" class="text-red-500">Disabled</span>
+              </p>
+              <p>JWT expire: <span x-text="settings.jwt_expire_hours || 24"></span> hours</p>
+            </div>
+          </div>
+
+          <!-- Data: Export & Backup -->
+          <div class="card p-6">
+            <h3 class="font-medium mb-1">Data</h3>
+            <p class="text-sm text-slate-500 mb-4">Export laporan atau backup database SQLite (cocok untuk SBC).</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" @click="exportCsv()" class="btn-primary">Export tasks CSV</button>
+              <button type="button" @click="downloadBackup()" x-show="user?.role==='admin'" class="btn-ghost">Download DB backup</button>
+            </div>
+            <p class="text-xs text-slate-400 mt-3" x-show="user?.role!=='admin'">Backup database hanya untuk role admin.</p>
+          </div>
+
+          <!-- AI Sync -->
+          <div class="card p-6">
+            <h3 class="font-medium mb-2">AI Integration</h3>
+            <p class="text-sm text-slate-500 mb-3">Endpoint <code class="text-xs bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">GET /api/ai/sync</code> menyediakan snapshot terstruktur semua project & task untuk AI agent.</p>
+            <button @click="testAiSync()" class="btn-ghost">Test AI Sync</button>
+            <pre x-show="aiPreview" class="mt-3 text-xs bg-slate-950 text-emerald-400 p-3 rounded-xl overflow-auto max-h-48 soft-scroll" x-text="aiPreview"></pre>
+          </div>
+        </div></div><!-- /settings -->
+      </div><!-- /th-main -->
+  </div><!-- /th-shell -->
+
+  <!-- New Project Modal -->
+    <div x-show="showNewProject" class="ui-overlay" x-cloak x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-4xl max-h-[92vh] flex flex-col"
+         @click.outside="showNewProject=false">
+      <div class="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+        <div>
+          <h3 class="text-lg font-semibold">New Project</h3>
+          <p class="text-xs text-slate-500">
+            <span x-show="newProjectStep===1">Step 1 · Project & template</span>
+            <span x-show="newProjectStep===2">Step 2 · Adjust tasks before save</span>
+          </p>
+        </div>
+        <button type="button" class="btn-ghost text-sm" @click="showNewProject=false">✕</button>
+      </div>
+
+      <!-- Step 1 -->
+      <div x-show="newProjectStep===1" class="p-5 overflow-y-auto soft-scroll space-y-3">
+        <input x-model="newProject.name" placeholder="Project name *"
+               class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-blue-500" />
+        <textarea x-model="newProject.description" placeholder="Description (optional)" rows="2"
+                  class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none"></textarea>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Status</label>
+            <select x-model="newProject.status" class="w-full input-sm">
+              <option value="Active">Active</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Completed">Completed</option>
+              <option value="Archived">Archived</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Color</label>
+            <input type="color" x-model="newProject.color" class="w-full h-9 rounded border border-slate-300 dark:border-slate-700" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Start date</label>
+            <input type="date" x-model="newProject.start_date" class="w-full input-sm" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">Due date</label>
+            <input type="date" x-model="newProject.due_date" class="w-full input-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">Task template</label>
+          <select x-model="newProject.template_id" class="w-full input-sm"
+                  @change="loadDraftFromTemplate()"
+                  @focus="projectTemplates.length || loadTemplates()">
+            <option value="">None — empty project</option>
+            <template x-for="tpl in projectTemplates" :key="tpl.id">
+              <option :value="tpl.id" x-text="tpl.name + ' (' + (tpl.tasks?.length||0) + ' tasks)'"></option>
+            </template>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-1" x-show="newProject.template_id"
+             x-text="(projectTemplates.find(t => t.id===newProject.template_id)||{}).description || ''"></p>
+          <p class="text-[11px] text-slate-500 mt-1" x-show="newProject.template_id">
+            Next: review &amp; edit steps before saving.
+          </p>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div x-show="newProjectStep===2" class="p-5 overflow-y-auto soft-scroll flex-1 min-h-0">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <p class="text-sm text-slate-600 dark:text-slate-300">
+            Edit titles, type, effort, offsets, deps. Dates follow project start + offset.
+          </p>
+          <button type="button" class="btn-ghost text-xs" @click="addDraftTask()">+ Task</button>
+        </div>
+        <div class="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl">
+          <table class="th-table w-full text-xs">
+            <thead>
+              <tr>
+                <th></th><th>#</th><th>Title</th><th>Type</th><th>Pri</th><th>Effort</th>
+                <th>Offset</th><th>Days</th><th>MS</th><th>Deps</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(task, i) in draftTemplateTasks" :key="'dt-'+i">
+                <tr>
+                  <td class="whitespace-nowrap">
+                    <button type="button" class="btn-ghost text-[10px] px-1" @click="moveDraftTask(i,-1)">↑</button>
+                    <button type="button" class="btn-ghost text-[10px] px-1" @click="moveDraftTask(i,1)">↓</button>
+                  </td>
+                  <td class="tabular-nums text-slate-400" x-text="i"></td>
+                  <td><input class="input-sm w-40" x-model="task.title" /></td>
+                  <td>
+                    <select class="input-sm" x-model="task.type">
+                      <option>2D CAD</option><option>CAD</option><option>CAM</option><option>Tools</option><option>Others</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select class="input-sm" x-model="task.priority">
+                      <option>High</option><option>Medium</option><option>Low</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.effort" /></td>
+                  <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.offset_start_days" title="Days from project start" /></td>
+                  <td><input type="number" min="0" class="input-sm w-14" x-model.number="task.duration_days" /></td>
+                  <td><input type="checkbox" x-model="task.is_milestone" /></td>
+                  <td>
+                    <input class="input-sm w-16" :value="(task.depends_on||[]).join(',')"
+                           @change="task.depends_on=($event.target.value||'').split(',').map(s=>s.trim()).filter(Boolean).map(Number)"
+                           placeholder="0,1" title="Predecessor row numbers" />
+                  </td>
+                  <td><button type="button" class="btn-ghost text-red-600 text-xs" @click="removeDraftTask(i)">×</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <p x-show="!draftTemplateTasks.length" class="text-sm text-slate-400 py-6 text-center">No tasks — add rows or go back and pick a template.</p>
+      </div>
+
+      <div class="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex justify-between gap-2">
+        <button type="button" class="btn-ghost text-sm" @click="showNewProject=false">Cancel</button>
+        <div class="flex gap-2">
+          <button type="button" class="btn-ghost text-sm" x-show="newProjectStep===2" @click="newProjectBack()">Back</button>
+          <button type="button" class="btn-primary text-sm" x-show="newProjectStep===1" @click="newProjectNext()"
+                  x-text="newProject.template_id ? 'Next · adjust tasks' : 'Create project'"></button>
+          <button type="button" class="btn-primary text-sm" x-show="newProjectStep===2" @click="createProject()">
+            Save project &amp; tasks
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!-- Edit Project Modal -->
+  <div x-show="showEditProject" class="ui-overlay" x-cloak x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+         @click.outside="showEditProject=false">
+      <h3 class="text-lg font-semibold mb-4">Edit Project</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Name</label>
+          <input x-model="editProject.name" class="w-full input-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+          <textarea x-model="editProject.description" rows="2" class="w-full input-sm"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+            <select x-model="editProject.status" class="w-full input-sm">
+              <option value="Active">Active</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Completed">Completed</option>
+              <option value="Archived">Archived</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Color</label>
+            <input type="color" x-model="editProject.color" class="w-full h-9 rounded border border-slate-300 dark:border-slate-700" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Start date</label>
+            <input type="date" x-model="editProject.start_date" class="w-full input-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Due date</label>
+            <input type="date" x-model="editProject.due_date" class="w-full input-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Referensi</label>
+          <input x-model="editProject.reference" placeholder="No. drawing, WO, customer PO, link…" class="w-full input-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Data penunjang</label>
+          <textarea x-model="editProject.supporting_data" rows="3"
+                    placeholder="Material, toleransi, catatan engineering, link file…"
+                    class="w-full input-sm"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" @click="showEditProject=false" class="btn-ghost">Cancel</button>
+        <button type="button" @click="saveEditProject()" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New User Modal -->
+  <div x-show="showNewUser" class="ui-overlay" x-cloak x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-md p-6" @click.outside="showNewUser=false">
+      <h3 class="text-lg font-semibold mb-4">Add user</h3>
+      <div class="space-y-3">
+        <input x-model="newUser.full_name" placeholder="Full name" class="w-full input-sm" />
+        <input x-model="newUser.username" placeholder="Username" required class="w-full input-sm" />
+        <input x-model="newUser.email" type="email" placeholder="Email" required class="w-full input-sm" />
+        <input x-model="newUser.password" type="password" placeholder="Password (min 6)" required class="w-full input-sm" />
+        <select x-model="newUser.role" class="w-full input-sm">
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="flex justify-end gap-2 mt-4">
+        <button type="button" @click="showNewUser=false" class="btn-ghost">Cancel</button>
+        <button type="button" @click="createUser()" class="btn-primary">Create</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- TASK DETAIL SLIDE-OVER -->
+  <div x-show="detailTask" class="fixed inset-0 z-50 flex justify-end" x-cloak>
+    <div class="absolute inset-0 bg-black/40" @click="detailTask=null"></div>
+    <div class="relative w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl h-full overflow-y-auto border-l border-slate-200 dark:border-slate-800"
+         x-show="detailTask" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0">
+      <div class="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-5 py-4 flex items-center justify-between z-10">
+        <h3 class="font-semibold">Task Detail</h3>
+        <button @click="detailTask=null" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+      </div>
+      <div class="p-5 space-y-4" x-show="detailTask">
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Title</label>
+          <input x-model="detailForm.title" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+          <textarea x-model="detailForm.description" rows="3" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm outline-none"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Type</label>
+            <select x-model="detailForm.type" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
+              <template x-for="t in types" :key="t"><option :value="t" x-text="t"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+            <select x-model="detailForm.status" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
+              <template x-for="s in statuses" :key="s"><option :value="s" x-text="s"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Priority</label>
+            <select x-model="detailForm.priority" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
+              <template x-for="p in priorities" :key="p"><option :value="p" x-text="p"></option></template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">
+              Progress <span class="text-blue-600 font-semibold" x-text="(detailForm.progress ?? 0) + '%'"></span>
+            </label>
+            <div class="flex items-center gap-3">
+              <input type="range" min="0" max="100" step="5" x-model.number="detailForm.progress"
+                class="flex-1 h-2 rounded-full appearance-none cursor-pointer bg-slate-200 dark:bg-slate-700
+                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                       [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600
+                       [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full
+                       [&::-moz-range-thumb]:bg-blue-600 [&::-moz-range-thumb]:border-0" />
+              <input type="number" min="0" max="100" x-model.number="detailForm.progress"
+                class="w-16 px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-center" />
+            </div>
+            <div class="mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div class="h-full rounded-full bg-blue-500 transition-all duration-150" :style="'width:' + (detailForm.progress||0) + '%'"></div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Start Date</label>
+            <input type="date" x-model="detailForm.start_date" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Due Date</label>
+            <input type="date" x-model="detailForm.due_date" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Assignee</label>
+          <select x-model="detailForm.assignee_id" class="w-full px-2 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
+            <option :value="null">Unassigned</option>
+            <template x-for="u in users" :key="u.id">
+              <option :value="u.id" x-text="u.full_name || u.username"></option>
+            </template>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="detailForm.is_milestone" class="rounded" />
+            <span>Milestone</span>
+          </label>
+          <span class="text-[10px] text-slate-400">Zero-duration checkpoint</span>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Attachment / file link</label>
+          <input x-model="detailForm.attachment_url" type="url" placeholder="file:// atau https://..."
+                 class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm outline-none" />
+        </div>
+        <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Baseline</span>
+            <button type="button" class="btn-ghost text-xs" @click="saveTaskBaseline()" x-show="canEdit">Save baseline</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs text-slate-600">
+            <div>Plan start: <strong x-text="detailForm.baseline_start || '—'"></strong></div>
+            <div>Plan due: <strong x-text="detailForm.baseline_due || '—'"></strong></div>
+          </div>
+        </div>
+
+        <!-- Dependencies -->
+        <div class="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-sm font-semibold">Dependencies</h4>
+            <span x-show="detailDeps.blocked"
+                  class="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Blocked</span>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Depends on (predecessors)</label>
+            <div class="space-y-1 mb-2">
+              <template x-for="p in detailDeps.predecessors" :key="p.id">
+                <div class="flex items-center gap-2 text-sm px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+                  <span class="badge text-[10px]" :class="statusClass(p.predecessor_status)" x-text="p.predecessor_status"></span>
+                  <span class="flex-1 truncate" x-text="p.predecessor_title"></span>
+                  <span class="text-[10px] text-slate-400 tabular-nums" x-show="p.lag_days" x-text="'+' + p.lag_days + 'd'"></span>
+                  <button type="button" x-show="canEdit" @click="removeDependency(p.id)"
+                          class="text-red-500 hover:text-red-700 text-xs px-1" title="Remove">&times;</button>
+                </div>
+              </template>
+              <div x-show="!(detailDeps.predecessors||[]).length" class="text-xs text-slate-400">Tidak ada predecessor</div>
+            </div>
+            <div class="flex flex-wrap gap-2" x-show="canEdit">
+              <select x-model="depPickId" class="flex-1 min-w-[10rem] px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm">
+                <option value="">— pilih task —</option>
+                <template x-for="t in depCandidateTasks" :key="t.id">
+                  <option :value="t.id" x-text="(t.project_name ? t.project_name + ' · ' : '') + t.title"></option>
+                </template>
+              </select>
+              <input type="number" min="0" max="365" x-model.number="depLagDays" title="Lag days"
+                     class="w-20 px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                     placeholder="Lag" />
+              <button type="button" @click="addDependency()"
+                      class="px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-700 text-white text-xs font-medium hover:bg-slate-700">Add</button>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-1">Lag = buffer hari setelah predecessor selesai. Siklus (A→B→A) ditolak otomatis.</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Blocks (successors)</label>
+            <div class="space-y-1">
+              <template x-for="s in detailDeps.successors" :key="s.id">
+                <div class="flex items-center gap-2 text-sm px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60">
+                  <span class="badge text-[10px]" :class="statusClass(s.successor_status)" x-text="s.successor_status"></span>
+                  <span class="flex-1 truncate" x-text="s.successor_title"></span>
+                </div>
+              </template>
+              <div x-show="!(detailDeps.successors||[]).length" class="text-xs text-slate-400">Tidak memblokir task lain</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button @click="saveDetail()" class="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Save</button>
+          <button @click="detailTask=null" class="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div x-show="toast"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0 translate-y-4"
+       x-transition:enter-end="opacity-100 translate-y-0"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100 translate-y-0"
+       x-transition:leave-end="opacity-0 translate-y-2"
+       class="ui-toast fixed bottom-4 right-4 bg-slate-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50" x-text="toast"></div>
+
+<script src="/static/js/gantt.js"></script>
+<script src="/static/js/deps.js"></script>
+
+    <!-- Edit user modal -->
+    <div x-show="editUser" class="fixed inset-0 z-50 flex items-center justify-center p-4" x-cloak
+         style="background:rgba(15,23,42,0.45)" @keydown.escape.window="editUser=null">
+      <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl w-full max-w-md p-6 space-y-4" @click.outside="editUser=null">
+        <h3 class="text-lg font-semibold">Edit user</h3>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Full name</label>
+          <input x-model="editUserForm.full_name" class="w-full input-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Email</label>
+          <input x-model="editUserForm.email" type="email" class="w-full input-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Role</label>
+          <select x-model="editUserForm.role" class="w-full input-sm">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input type="checkbox" x-model="editUserForm.is_active" class="rounded" /> Active
+        </label>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">Weekly capacity (hours)</label>
+          <input x-model.number="editUserForm.weekly_capacity" type="number" min="0" max="168" class="w-full input-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">New password (optional)</label>
+          <input x-model="editUserForm.password" type="password" class="w-full input-sm" placeholder="Leave blank to keep" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" class="btn-ghost" @click="editUser=null">Cancel</button>
+          <button type="button" class="btn-primary" @click="saveEditUser()">Save</button>
+        </div>
+      </div>
+    </div>
+
+
+<!-- Local JS only — order matters: mixins → app → alpine -->
+<script src="/static/js/Sortable.min.js"></script>
+<script src="/static/js/frappe-gantt.min.js"></script>
+<script src="/static/js/kanban.js"></script>
+<script src="/static/js/deps.js"></script>
+<script src="/static/js/gantt.js"></script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/alpine.min.js"></script>
+<script>
+(function () {
+  function showErr(msg) {
+    if (document.getElementById('boot-error')) return;
+    var d = document.createElement('div');
+    d.id = 'boot-error';
+    d.setAttribute('style', 'position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#7f1d1d;color:#fff;padding:12px 16px;font:13px/1.4 system-ui');
+    d.textContent = msg;
+    document.body.appendChild(d);
+  }
+  window.addEventListener('error', function (e) {
+    showErr('JS error: ' + (e.message || e));
+  });
+  setTimeout(function () {
+    if (!window.Alpine) {
+      showErr('Alpine.js tidak termuat. Cek GET /static/js/alpine.min.js (harus 200).');
+    } else if (typeof app !== 'function') {
+      showErr('app() tidak ditemukan. Cek GET /static/js/app.js');
+    }
+  }, 2000);
+})();
+</script>
+</body>
+
+</html>

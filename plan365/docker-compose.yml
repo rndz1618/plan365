@@ -1,0 +1,21 @@
+# Plan365 on Docker — single container, SQLite volume
+services:
+  plan365:
+    build: .
+    image: plan365:latest
+    container_name: plan365
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - plan365-data:/data
+    environment:
+      - TZ=Asia/Jakarta
+      - PLAN365_DB=/data/plan365.db
+      # Override in production:
+      # - PLAN365_SECRET_KEY=your-long-random-string
+    mem_limit: 256m
+    memswap_limit: 256m
+
+volumes:
+  plan365-data:
