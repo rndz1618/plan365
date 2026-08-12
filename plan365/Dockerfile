@@ -15,6 +15,8 @@ COPY main.py .
 COPY app ./app
 COPY static ./static
 COPY seed_demo.py .
+COPY alembic.ini .
+COPY alembic ./alembic
 
 RUN mkdir -p /data
 
