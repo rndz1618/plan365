@@ -1,8 +1,9 @@
-*.db
-*.db-*
-__pycache__/
+.venv
+__pycache__
 *.pyc
-.venv/
-venv/
-.env
-*.log
+*.db
+*.db-shm
+*.db-wal
+.git
+plan365-source.zip
+plan365-pg-source.zip
