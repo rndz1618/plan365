@@ -56,19 +56,26 @@ async def export_tasks_csv(project_id: Optional[int] = None, u=Depends(current_u
 async def backup_db(u=Depends(current_user)):
     if u["role"] != "admin":
         raise HTTPException(403, "Admin only")
+    from app.config import DB_BACKEND
+    from app.database import is_sqlite
+
+    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    if not is_sqlite():
+        raise HTTPException(
+            400,
+            f"File backup only supported for SQLite (current backend: {DB_BACKEND}). "
+            "Use pg_dump for PostgreSQL.",
+        )
     path = Path(DB_PATH)
     if not path.exists():
         raise HTTPException(404, "Database file not found")
-    # checkpoint WAL so single-file backup is consistent
     with db() as c:
         try:
             c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         except Exception:
             pass
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
     return FileResponse(
         path,
         media_type="application/octet-stream",
         filename=f"plan365-backup-{stamp}.db",
     )
-
