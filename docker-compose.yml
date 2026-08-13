@@ -38,9 +38,9 @@ services:
     container_name: plan365-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: plan365
-      POSTGRES_PASSWORD: plan365
-      POSTGRES_DB: plan365
+      POSTGRES_USER: ${POSTGRES_USER:-plan365}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plan365}
+      POSTGRES_DB: ${POSTGRES_DB:-plan365}
     volumes:
       - plan365-pgdata:/var/lib/postgresql/data
     # Bind localhost only — do NOT expose Postgres to 0.0.0.0
