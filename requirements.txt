@@ -4,3 +4,5 @@ python-jose[cryptography]==3.3.0
 python-multipart==0.0.20
 pydantic==2.10.4
 bcrypt==4.2.1
+# Optional — required when PLAN365_DB_BACKEND=postgresql
+psycopg2-binary==2.9.10

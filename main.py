@@ -1,7 +1,7 @@
 """
 Plan365 - Lightweight Project & Task Manager
 Optimized for Linux SBC 2GB RAM
-Modular FastAPI + SQLite + JWT
+Modular FastAPI + SQLite/PostgreSQL + JWT
 """
 from pathlib import Path
 from fastapi import FastAPI
@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import STATIC_DIR, BASE_DIR
 from app.database import init_db
-from app.routers import auth_routes, projects, tasks, dependencies, settings, export
+from app.routers import auth_routes, projects, tasks, dependencies, settings, export, dashboard, realtime, ai as ai_routes
 
 init_db()
 
@@ -30,8 +30,10 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(dependencies.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(realtime.router, prefix="/api")
+app.include_router(ai_routes.router, prefix="/api")
 
-# Static assets (css/js) — HTML shell at /
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -44,10 +46,35 @@ async def root():
     return FileResponse(index)
 
 
+@app.get("/diag")
+async def diag():
+    """Plain HTML smoke page — no Alpine/CDN. Use if UI blank."""
+    from fastapi.responses import HTMLResponse
+    from app.config import STATIC_DIR, BASE_DIR
+    files = {
+        "index": (STATIC_DIR / "index.html").exists() or (BASE_DIR / "index.html").exists(),
+        "app.js": (STATIC_DIR / "js" / "app.js").exists(),
+        "alpine.min.js": (STATIC_DIR / "js" / "alpine.min.js").exists(),
+        "deps.js": (STATIC_DIR / "js" / "deps.js").exists(),
+        "gantt.js": (STATIC_DIR / "js" / "gantt.js").exists(),
+        "app.css": (STATIC_DIR / "css" / "app.css").exists(),
+    }
+    rows = "".join(f"<li>{k}: <b>{'OK' if v else 'MISSING'}</b></li>" for k, v in files.items())
+    html = f"""<!DOCTYPE html><html><head><meta charset=utf-8><title>Plan365 diag</title></head>
+<body style="font:16px system-ui;padding:2rem;background:#dce3e3">
+<h1>Plan365 diagnostics</h1>
+<p>If you see this page, HTTP works. Open the home page after fixing any MISSING files.</p>
+<ul>{rows}</ul>
+<p><a href="/">Go to app</a> · <a href="/static/js/app.js">app.js</a> · <a href="/static/js/alpine.min.js">alpine</a></p>
+</body></html>"""
+    return HTMLResponse(html)
+
+
 @app.get("/health")
 async def health():
     from datetime import datetime
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+    from app.config import DB_BACKEND
+    return {"status": "ok", "time": datetime.utcnow().isoformat(), "db_backend": DB_BACKEND}
 
 
 if __name__ == "__main__":

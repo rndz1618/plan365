@@ -4,6 +4,8 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+.env
+*.log
 .DS_Store
 plan365-source.zip
-*.log
+plan365-pg-source.zip
