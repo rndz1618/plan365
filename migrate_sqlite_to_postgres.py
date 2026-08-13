@@ -58,8 +58,10 @@ def connect_pg(url: str):
 
 
 def ensure_pg_schema(pg_url: str) -> None:
+    """Create tables on PostgreSQL via app.init_db() dual-backend."""
     os.environ["PLAN365_DB_BACKEND"] = "postgresql"
     os.environ["PLAN365_DATABASE_URL"] = pg_url
+    # Drop cached modules so PLAN365_DB_BACKEND is applied on re-import
     for mod in list(sys.modules):
         if mod == "app.config" or mod.startswith("app.database"):
             del sys.modules[mod]
