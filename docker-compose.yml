@@ -1,4 +1,13 @@
-# Plan365 on Docker — single container, SQLite volume
+# Plan365 — SQLite (default) or PostgreSQL profile
+#
+# SQLite (SBC / simple):
+#   docker compose up -d --build
+#
+# PostgreSQL:
+#   export PLAN365_DB_BACKEND=postgresql
+#   export PLAN365_DATABASE_URL=postgresql://plan365:plan365@postgres:5432/plan365
+#   docker compose --profile postgres up -d --build
+
 services:
   plan365:
     build: .
@@ -12,10 +21,31 @@ services:
     environment:
       - TZ=Asia/Jakarta
       - PLAN365_DB=/data/plan365.db
-      # Override in production:
-      # - PLAN365_SECRET_KEY=your-long-random-string
+      - PLAN365_DB_BACKEND=${PLAN365_DB_BACKEND:-sqlite}
+      - PLAN365_DATABASE_URL=${PLAN365_DATABASE_URL:-}
     mem_limit: 256m
     memswap_limit: 256m
 
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    container_name: plan365-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plan365
+      POSTGRES_PASSWORD: plan365
+      POSTGRES_DB: plan365
+    volumes:
+      - plan365-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plan365 -d plan365"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
 volumes:
   plan365-data:
+  plan365-pgdata:
