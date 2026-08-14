@@ -1,7 +1,7 @@
 """
 Plan365 - Lightweight Project & Task Manager
 Optimized for Linux SBC 2GB RAM
-Modular FastAPI + SQLite + JWT
+Modular FastAPI + PostgreSQL + JWT
 """
 from pathlib import Path
 from fastapi import FastAPI
@@ -15,7 +15,7 @@ from app.routers import auth_routes, projects, tasks, dependencies, settings, ex
 
 init_db()
 
-app = FastAPI(title="Plan365", version="1.1.0", docs_url="/api/docs")
+app = FastAPI(title="Plan365", version="1.2.0", docs_url="/api/docs")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,11 +60,11 @@ async def diag():
     }
     rows = "".join(f"<li>{k}: <b>{'OK' if v else 'MISSING'}</b></li>" for k, v in files.items())
     html = f"""<!DOCTYPE html><html><head><meta charset=utf-8><title>Plan365 diag</title></head>
-<body style=\"font:16px system-ui;padding:2rem;background:#dce3e3\">
+<body style="font:16px system-ui;padding:2rem;background:#dce3e3">
 <h1>Plan365 diagnostics</h1>
-<p>If you see this page, HTTP works. Open the home page after fixing any MISSING files.</p>
+<p>If you see this page, HTTP works.</p>
 <ul>{rows}</ul>
-<p><a href=\"/\">Go to app</a> · <a href=\"/static/js/app.js\">app.js</a> · <a href=\"/static/js/alpine.min.js\">alpine</a></p>
+<p><a href="/">Go to app</a></p>
 </body></html>"""
     return HTMLResponse(html)
 
@@ -72,7 +72,8 @@ async def diag():
 @app.get("/health")
 async def health():
     from datetime import datetime
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+    from app.config import DB_BACKEND
+    return {"status": "ok", "time": datetime.utcnow().isoformat(), "db_backend": DB_BACKEND}
 
 
 if __name__ == "__main__":

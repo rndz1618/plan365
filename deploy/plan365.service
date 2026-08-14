@@ -1,0 +1,21 @@
+[Unit]
+Description=Plan365 Project & Task Manager
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=plan365
+Group=plan365
+WorkingDirectory=/opt/plan365
+Environment=PATH=/opt/plan365/.venv/bin:/usr/bin
+Environment=PLAN365_DATABASE_URL=postgresql://plan365:SECRET@127.0.0.1:5432/plan365
+# Or: EnvironmentFile=/opt/plan365/.env
+ExecStart=/opt/plan365/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --log-level info
+Restart=on-failure
+RestartSec=5
+MemoryMax=300M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
