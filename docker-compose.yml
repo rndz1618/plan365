@@ -1,14 +1,50 @@
+# Plan365 — PostgreSQL only
+#
+# Host Postgres (recommended if already installed):
+#   export PLAN365_DATABASE_URL=postgresql://plan365:SECRET@127.0.0.1:5432/plan365
+#   docker compose up -d --build
+#
+# Bundled Postgres (default URL points at service "postgres"):
+#   docker compose up -d --build
+#
+# Optional: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, PLAN365_SECRET_KEY
+
 services:
   plan365:
     build: .
+    image: plan365:latest
+    container_name: plan365
+    restart: unless-stopped
     ports:
       - "8000:8000"
-    volumes:
-      - plan365-data:/data
     environment:
-      PLAN365_DB: /data/plan365.db
-      PLAN365_SECRET_KEY: ${PLAN365_SECRET_KEY:-change-me-in-production}
+      - TZ=Asia/Jakarta
+      - PLAN365_DATABASE_URL=${PLAN365_DATABASE_URL:-postgresql://plan365:plan365@postgres:5432/plan365}
+      - PLAN365_SECRET_KEY=${PLAN365_SECRET_KEY:-plan365-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
     mem_limit: 256m
+    memswap_limit: 256m
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: plan365-postgres
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plan365}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plan365}
+      POSTGRES_DB: ${POSTGRES_DB:-plan365}
+    volumes:
+      - plan365-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plan365 -d plan365"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+
 volumes:
-  plan365-data:
+  plan365-pgdata:
